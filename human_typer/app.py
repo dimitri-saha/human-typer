@@ -9,6 +9,7 @@ import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
 import engine
+import markup
 import sinks
 
 MODE_FOCUSED, MODE_CHROME, MODE_PREVIEW = "focused", "chrome", "preview"
@@ -72,8 +73,10 @@ class Runner(threading.Thread):
                 t0 = time.monotonic()
                 if a.kind == "key":
                     sink.key(a.ch)
-                else:
+                elif a.kind == "back":
                     sink.backspace()
+                else:
+                    sink.combo(a.ch)
                 debt = time.monotonic() - t0   # key hold time counts toward the next gap
                 self.events.put(("progress", idx + 1, a.pos, a.tag))
         except Exception as e:
@@ -107,10 +110,14 @@ class App:
         outer.pack(fill="both", expand=True, padx=8, pady=8)
 
         ttk.Label(outer, text="Text to type", font=("Helvetica", 13, "bold")).pack(anchor="w", **pad)
+        self._build_format_bar(outer)
         self.text = scrolledtext.ScrolledText(outer, height=12, wrap="word", font=("Helvetica", 13),
                                               undo=True, borderwidth=1, relief="solid")
         self.text.pack(fill="both", expand=True, padx=12)
         self.text.bind("<<Modified>>", self._on_text_change)
+        ttk.Label(outer, foreground="#666", text=(
+            "Marks: **bold**  *italic*  __underline__  ~~strike~~  {size:18}text{/size}  "
+            "# Heading  - bullet  1. numbered   (\\* types a real *)")).pack(anchor="w", padx=12, pady=(2, 0))
 
         # --- how it types
         style = ttk.LabelFrame(outer, text="Typing style")
@@ -198,6 +205,86 @@ class App:
         self.stats = ttk.Label(bottom, foreground="#666")
         self.stats.pack(side="right")
 
+    def _build_format_bar(self, parent):
+        bar = ttk.Frame(parent)
+        bar.pack(fill="x", padx=12, pady=(0, 4))
+        for label, mark, font in (("B", "**", ("Helvetica", 13, "bold")), ("I", "*", ("Helvetica", 13, "italic")),
+                                  ("U", "__", ("Helvetica", 13, "underline")),
+                                  ("S", "~~", ("Helvetica", 13, "overstrike"))):
+            tk.Button(bar, text=label, font=font, width=2,
+                      command=lambda m=mark: self._wrap_selection(m, m)).pack(side="left", padx=1)
+        self.size_pick = ttk.Combobox(bar, values=[str(x) for x in markup.SIZE_STEPS], width=4, state="readonly")
+        self.size_pick.set("Size")
+        self.size_pick.pack(side="left", padx=(8, 2))
+        self.size_pick.bind("<<ComboboxSelected>>", self._apply_size)
+        self.para_pick = ttk.Combobox(bar, state="readonly", width=11, values=[
+            "Normal text", "Heading 1", "Heading 2", "Heading 3", "Heading 4", "Bulleted list", "Numbered list"])
+        self.para_pick.set("Paragraph")
+        self.para_pick.pack(side="left", padx=2)
+        self.para_pick.bind("<<ComboboxSelected>>", self._apply_para)
+        ttk.Button(bar, text="Paste formatted", command=self._paste_formatted).pack(side="left", padx=8)
+        self.use_fmt = tk.BooleanVar(value=True)
+        ttk.Checkbutton(bar, text="Apply formatting (Google Docs)", variable=self.use_fmt,
+                        command=self._schedule_estimate).pack(side="right")
+
+    def _selection(self):
+        try:
+            return self.text.index("sel.first"), self.text.index("sel.last")
+        except tk.TclError:
+            return None
+
+    def _wrap_selection(self, before, after):
+        sel = self._selection()
+        if sel:
+            self.text.insert(sel[1], after)
+            self.text.insert(sel[0], before)
+        else:
+            self.text.insert("insert", before + after)
+            self.text.mark_set("insert", f"insert-{len(after)}c")
+        self.text.focus_set()
+
+    def _apply_size(self, _=None):
+        self._wrap_selection(f"{{size:{self.size_pick.get()}}}", "{/size}")
+        self.size_pick.set("Size")
+
+    def _apply_para(self, _=None):
+        choice = self.para_pick.get()
+        prefix = {"Normal text": "", "Bulleted list": "- ", "Numbered list": "1. "}.get(
+            choice, "#" * int(choice[-1]) + " " if choice.startswith("Heading") else "")
+        sel = self._selection() or (self.text.index("insert"), self.text.index("insert"))
+        first, last = int(sel[0].split(".")[0]), int(sel[1].split(".")[0])
+        for n, line in enumerate(range(first, last + 1)):
+            content = self.text.get(f"{line}.0", f"{line}.end")
+            m = markup.LINE_RE.match(content)
+            if m:
+                self.text.delete(f"{line}.0", f"{line}.{m.end()}")
+            p = f"{n + 1}. " if prefix == "1. " else prefix
+            if p:
+                self.text.insert(f"{line}.0", p)
+        self.para_pick.set("Paragraph")
+        self.text.focus_set()
+
+    def _paste_formatted(self):
+        """Pastes the clipboard, turning rich text (Docs, Word, web) into marks."""
+        html = None
+        try:
+            from AppKit import NSPasteboard
+            html = NSPasteboard.generalPasteboard().stringForType_("public.html")
+        except Exception:
+            pass
+        if html:
+            content = markup.html_to_markup(str(html))
+        else:
+            try:
+                content = self.root.clipboard_get()
+            except tk.TclError:
+                return
+        sel = self._selection()
+        if sel:
+            self.text.delete(*sel)
+        self.text.insert("insert", content)
+        self.text.focus_set()
+
     def _slider(self, parent, row, label, var, lo, hi, fmt):
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=8, pady=2)
         value = ttk.Label(parent, width=8)
@@ -250,9 +337,9 @@ class App:
         if not text.strip():
             self.estimate.config(text="")
             return
-        actions = engine.plan_text(text, self._settings(), seed=1)
+        actions, plain = markup.plan(text, self._settings(), seed=1, formatting=self.use_fmt.get())
         secs = engine.plan_duration(actions)
-        words = len(text) / 5
+        words = len(plain) / 5
         self.estimate.config(text=f"≈ {fmt_duration(secs)}  ·  ~{words / (secs / 60):.0f} wpm overall")
 
     # --------------------------------------------------------------- modes --
@@ -315,9 +402,10 @@ class App:
         if not text:
             messagebox.showinfo("Human Typer", "Paste or type some text first.")
             return
-        actions = engine.plan_text(text, self._settings(), seed=random.randrange(1 << 30))
+        actions, plain = markup.plan(text, self._settings(), seed=random.randrange(1 << 30),
+                                     formatting=self.use_fmt.get())
         self.total_actions = len(actions)
-        self.text_len = len(text)
+        self.text_len = len(plain)
         self.typos_made = 0
         self.started = None
         mode = self.mode.get()
@@ -426,18 +514,42 @@ class App:
 
     # ------------------------------------------------------------- preview --
     def _open_preview(self):
+        self.pv = markup.DocsState()   # the formatting the preview applies next
+        self.pv_num = 0
         if getattr(self, "preview_win", None) and self.preview_win.winfo_exists():
             self.preview_text.delete("1.0", "end")
             self.preview_win.lift()
             return
         self.preview_win = tk.Toplevel(self.root)
         self.preview_win.title("Preview")
-        self.preview_win.geometry("640x420")
+        self.preview_win.geometry("680x460")
         self.preview_text = tk.Text(self.preview_win, wrap="word", font=("Helvetica", 15),
                                     padx=14, pady=14, insertwidth=2)
         self.preview_text.pack(fill="both", expand=True)
+        self.preview_text.tag_configure("marker", foreground="#555")
         # Only the simulated typist writes here; real keystrokes are ignored.
         self.preview_text.bind("<Key>", lambda e: "break")
+
+    def _pv_style_tag(self):
+        st = self.pv
+        name = f"s{int(st.bold)}{int(st.italic)}{int(st.underline)}{int(st.strike)}_{st.size}"
+        if name not in self.preview_text.tag_names():
+            styles = [w for w, on in (("bold", st.bold), ("italic", st.italic)) if on]
+            self.preview_text.tag_configure(name, font=("Helvetica", round(st.size * 1.35), " ".join(styles)),
+                                            underline=st.underline, overstrike=st.strike)
+        return name
+
+    def _pv_marker(self):
+        """Shows the current paragraph's bullet or number, like Docs does."""
+        t = self.preview_text
+        start = t.index("insert linestart")
+        rng = t.tag_nextrange("marker", start, f"{start} lineend")
+        if rng and rng[0] == start:
+            t.delete(*rng)
+        if self.pv.list == "bullet":
+            t.insert(start, "  •  ", "marker")
+        elif self.pv.list == "number":
+            t.insert(start, f"  {self.pv_num}.  ", "marker")
 
     def _pump_preview(self):
         try:
@@ -447,9 +559,23 @@ class App:
                     continue
                 t = self.preview_text
                 if kind == "key":
-                    t.insert("insert", ch)
+                    if ch == "\n":
+                        t.insert("insert", "\n")
+                        self.pv.newline()
+                        if self.pv.list:
+                            self.pv_num += 1
+                            self._pv_marker()
+                    else:
+                        t.insert("insert", ch, self._pv_style_tag())
+                elif kind == "back":
+                    if "marker" not in t.tag_names("insert-1c"):
+                        t.delete("insert-1c")
                 else:
-                    t.delete("insert-1c")
+                    before = (self.pv.heading, self.pv.list)
+                    self.pv.apply(ch)
+                    if self.pv.list != before[1]:
+                        self.pv_num = 1 if self.pv.list == "number" and before[1] != "number" else self.pv_num
+                        self._pv_marker()
                 t.see("insert")
         except queue.Empty:
             pass

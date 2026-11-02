@@ -8,7 +8,9 @@ import time
 import urllib.parse
 import urllib.request
 
-from engine import base_key, needs_shift
+from engine import SHIFTED, base_key, needs_shift
+
+SHIFTED_OF = {base: shifted for shifted, base in SHIFTED.items()}
 
 # base key -> (macOS virtual keycode, DOM code); Windows VK codes for non-alphanumerics below
 KEYMAP = {
@@ -30,6 +32,13 @@ WIN_VK = {"=": 187, "-": 189, "]": 221, "[": 219, "'": 222, ";": 186, "\\": 220,
           ",": 188, "/": 191, ".": 190, "`": 192, " ": 32}
 
 MAC_RETURN, MAC_TAB, MAC_DELETE, MAC_SHIFT, MAC_ESC = 36, 48, 51, 56, 53
+MAC_MODIFIER_KEYS = {"cmd": 55, "shift": 56, "alt": 58, "ctrl": 59}
+
+
+def split_combo(spec):
+    """"cmd+shift+." -> (["cmd", "shift"], ".")"""
+    *mods, key = spec.split("+")
+    return mods, key
 
 
 def _dwell():
@@ -82,6 +91,26 @@ class QuartzSink:
 
     def backspace(self):
         self._tap(MAC_DELETE)
+
+    def combo(self, spec):
+        """A keyboard shortcut: modifiers go down one by one, then the key."""
+        Q = self.Q
+        flag_of = {"cmd": Q.kCGEventFlagMaskCommand, "shift": Q.kCGEventFlagMaskShift,
+                   "alt": Q.kCGEventFlagMaskAlternate, "ctrl": Q.kCGEventFlagMaskControl}
+        mods, key = split_combo(spec)
+        flags = 0
+        for m in mods:
+            flags |= flag_of[m]
+            self._post(MAC_MODIFIER_KEYS[m], True, flags)
+            time.sleep(random.uniform(0.03, 0.07))
+        keycode = KEYMAP[key][0]
+        self._post(keycode, True, flags)
+        time.sleep(_dwell())
+        self._post(keycode, False, flags)
+        for m in reversed(mods):
+            time.sleep(random.uniform(0.01, 0.04))
+            flags &= ~flag_of[m]
+            self._post(MAC_MODIFIER_KEYS[m], False, flags)
 
     def close(self):
         pass
@@ -227,6 +256,30 @@ class ChromeSink:
     def backspace(self):
         self._tap("Backspace", "Backspace", 8)
 
+    # CDP modifier bit, DOM key, DOM code, Windows VK
+    CDP_MODS = {"alt": (1, "Alt", "AltLeft", 18), "ctrl": (2, "Control", "ControlLeft", 17),
+                "cmd": (4, "Meta", "MetaLeft", 91), "shift": (8, "Shift", "ShiftLeft", 16)}
+
+    def combo(self, spec):
+        mods, key = split_combo(spec)
+        bits = 0
+        for m in mods:
+            bit, k, code, vk = self.CDP_MODS[m]
+            bits |= bit
+            self._key_event("rawKeyDown", k, code, vk, modifiers=bits)
+            time.sleep(random.uniform(0.03, 0.07))
+        code = KEYMAP[key][1]
+        vk = WIN_VK.get(key, ord(key.upper()))
+        shown = SHIFTED_OF.get(key, key.upper()) if "shift" in mods else key
+        self._key_event("rawKeyDown", shown, code, vk, modifiers=bits)
+        time.sleep(_dwell())
+        self._key_event("keyUp", shown, code, vk, modifiers=bits)
+        for m in reversed(mods):
+            time.sleep(random.uniform(0.01, 0.04))
+            bit, k, code, vk = self.CDP_MODS[m]
+            bits &= ~bit
+            self._key_event("keyUp", k, code, vk, modifiers=bits)
+
     def close(self):
         try:
             self.ws.close()
@@ -247,6 +300,9 @@ class PreviewSink:
 
     def backspace(self):
         self.q.put(("back", ""))
+
+    def combo(self, spec):
+        self.q.put(("combo", spec))
 
     def close(self):
         pass

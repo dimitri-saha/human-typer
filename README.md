@@ -39,6 +39,33 @@ of mind.
 
 Background mode needs Google Chrome, Microsoft Edge or Brave (not Safari or Arc).
 
+## Formatting (Google Docs)
+
+Mark up the text and Human Typer applies the formatting with Google Docs'
+keyboard shortcuts while it types, pressing a shortcut and then typing like a person would.
+
+| Mark | Result | Shortcut pressed |
+|---|---|---|
+| `**bold**` | **bold** | ⌘B |
+| `*italic*` | *italic* | ⌘I |
+| `__underline__` | underline | ⌘U |
+| `~~strike~~` | ~~strike~~ | ⌘⇧X |
+| `{size:18}text{/size}` | 18 pt text | ⌘⇧. / ⌘⇧, (once per size step) |
+| `# Heading` … `###### Heading` | Heading 1–6 | ⌘⌥1 … ⌘⌥6 |
+| `- item` | Bulleted list | ⌘⇧8 |
+| `1. item` | Numbered list | ⌘⇧7 |
+
+- The toolbar above the text box (B, I, U, S, Size, Paragraph) adds marks around the selection.
+- **Paste formatted** turns rich text copied from Google Docs, Word or a web page into marks.
+- A lone `*` between spaces (as in `5 * 3`) and a mark with no partner on the line are typed as-is. A backslash types a mark literally: `\*`, `\_`, `\~`, `\{`, `\#`.
+- Uncheck **Apply formatting** to type the text exactly as written.
+- Typos and their fixes never cross a formatting change, so nothing is retyped in the wrong style.
+- Font sizes snap to Docs' size steps (8, 9, 10, 11, 12, 14, 18, 24, 30, 36, 48, 60, 72, 96).
+- Start with the cursor in plain Normal text (11 pt, nothing toggled on). The app tracks
+  formatting from there.
+- The shortcuts are Google Docs ones on macOS. In other apps, ⌘B/⌘I/⌘U usually still
+  work, but headings, lists and sizes may not.
+
 ## Install
 
 Requires macOS 12+ and Python 3 from [python.org](https://www.python.org/downloads/macos/)

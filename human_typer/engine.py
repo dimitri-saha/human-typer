@@ -109,11 +109,11 @@ PRESETS = {
 
 @dataclass
 class Action:
-    kind: str      # "key" or "back"
-    ch: str        # character for "key"
+    kind: str      # "key", "back" or "combo" (a shortcut such as "cmd+b")
+    ch: str        # character for "key", shortcut for "combo"
     delay: float   # seconds to wait before this keystroke
     pos: int       # how many characters of the source text are done after it
-    tag: str = ""  # "", "typo", "fix", "think", "rethink" (for status display)
+    tag: str = ""  # "", "typo", "fix", "think", "rethink", "fmt" (for status display)
 
 
 class Planner:
@@ -186,9 +186,16 @@ class Planner:
         return 0.0
 
     # -- planning -------------------------------------------------------
-    def plan(self, text):
+    def plan(self, text, formats=None):
+        """formats: {text index: shortcuts to press before typing that character}.
+
+        Formatting changes act as barriers: no typo, correction or second
+        thought crosses one, so nothing is ever retyped in the wrong style.
+        """
         rng, s = self.rng, self.s
-        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        formats = formats or {}
+        if not formats:
+            text = text.replace("\r\n", "\n").replace("\r", "\n")
         n = len(text)
         typo_p = s.typos_per_100_words / 100.0 / 5.5
         actions = []
@@ -240,6 +247,7 @@ class Planner:
                     extra += rng.uniform(0.25, 0.9)
                 # Second thoughts: type the word, decide against it, retype it.
                 if (s.second_thoughts and len(word) >= 4 and i > 0
+                        and not any(b in formats for b in range(i, j))
                         and rng.random() < 0.007 * max(s.thinking, 0.3)):
                     for k, c in enumerate(word):
                         emit_key(c, i, word_start=(k == 0), tag="rethink" if k == 0 else "",
@@ -252,14 +260,25 @@ class Planner:
             else:
                 tag = ""
 
+            # ---- formatting shortcuts, pressed right before the character ----
+            if i in formats:
+                reach = rng.uniform(0.2, 0.55)
+                for k, combo in enumerate(formats[i]):
+                    d = extra + reach if k == 0 else rng.uniform(0.12, 0.3)
+                    first_tag = (tag or "fmt") if k == 0 else "fmt"
+                    actions.append(Action("combo", combo, d, i, first_tag))
+                extra = rng.uniform(0.08, 0.25)
+                tag = ""
+                prev = ""
+
             # ---- typo? ----
             kind = None
             if cooldown > 0:
                 cooldown -= 1
-            elif i > 0 and ch.isascii() and ch.isprintable() and ch != " ":
+            elif i > 0 and i not in formats and ch.isascii() and ch.isprintable() and ch != " ":
                 p = typo_p * (1.3 if (needs_shift(ch) or not ch.isalnum()) else 1.0)
                 if rng.random() < p:
-                    kind = self._choose_typo(text, i)
+                    kind = self._choose_typo(text, i, i + 1 not in formats)
 
             if kind:
                 wrong, consumed = self._make_typo(kind, text, i)
@@ -270,7 +289,8 @@ class Planner:
                     k = rng.choice([1, 1, 1, 2, 2, 3, 3, 4, 5, 7])
                 start_extra = i + consumed
                 limit = start_extra
-                while limit < n and text[limit] != "\n" and limit - start_extra < k:
+                while (limit < n and text[limit] != "\n" and limit not in formats
+                       and limit - start_extra < k):
                     limit += 1
                 extra_chars = text[start_extra:limit]
                 if not wrong and not extra_chars:
@@ -288,7 +308,8 @@ class Planner:
                         cooldown = 3
                     else:
                         # Sometimes delete one character too many.
-                        overshoot = 1 if (i > 0 and text[i - 1] not in "\n" and rng.random() < 0.1) else 0
+                        overshoot = 1 if (i > 0 and text[i - 1] not in "\n" and i - 1 not in formats
+                                          and rng.random() < 0.1) else 0
                         notice = rng.uniform(0.15, 0.6) + 0.08 * len(extra_chars)
                         emit_backspaces(len(wrong) + len(extra_chars) + overshoot, i, notice)
                         redo_from = i - overshoot
@@ -312,9 +333,10 @@ class Planner:
             i += 1
         return actions
 
-    def _choose_typo(self, text, i):
+    def _choose_typo(self, text, i, next_ok=True):
         ch = text[i]
-        nxt = text[i + 1] if i + 1 < len(text) else ""
+        # Typos that involve the next character can't reach across a formatting change.
+        nxt = text[i + 1] if i + 1 < len(text) and next_ok else ""
         options = [("substitution", 50), ("double", 8), ("insertion", 8)]
         if nxt and nxt not in " \n\t":
             options.append(("omission", 11))
@@ -363,6 +385,6 @@ def replay(actions):
     for a in actions:
         if a.kind == "key":
             out.append(a.ch)
-        elif out:
+        elif a.kind == "back" and out:
             out.pop()
     return "".join(out)
