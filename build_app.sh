@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Builds dist/Human Typer.app. Pass --install to also copy it to ~/Applications.
+# Builds dist/Human Typer.app. Pass --install to also copy it to /Applications.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -50,8 +50,7 @@ chmod +x "$APP/Contents/MacOS/HumanTyper"
 
 echo "Built $APP"
 if [[ "${1:-}" == "--install" ]]; then
-  mkdir -p ~/Applications
-  rm -rf ~/Applications/"Human Typer.app"
-  cp -R "$APP" ~/Applications/
-  echo "Installed to ~/Applications/Human Typer.app"
+  rm -rf /Applications/"Human Typer.app"
+  cp -R "$APP" /Applications/
+  echo "Installed to /Applications/Human Typer.app"
 fi

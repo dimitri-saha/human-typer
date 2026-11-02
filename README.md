@@ -49,7 +49,7 @@ python3 -m pip install -r requirements.txt
 ./build_app.sh --install
 ```
 
-This puts **Human Typer.app** in `~/Applications`. To run from source instead:
+This puts **Human Typer.app** in `/Applications`. To run from source instead:
 `python3 human_typer/app.py`.
 
 For **Focused window** mode, allow Human Typer (or Python) under
