@@ -220,41 +220,44 @@ class ChromeSink:
                     raise RuntimeError(msg["error"].get("message", str(msg["error"])))
                 return msg.get("result")
 
-    def _key_event(self, type_, key, code, vk, text=None, modifiers=0):
+    def _key_event(self, type_, key, code, vk, native, text=None, modifiers=0):
+        # On a Mac, Chrome turns nativeVirtualKeyCode into a real key event once its
+        # window is in front, so it must be the Mac key code, not the Windows one
+        # (Windows codes land on volume keys, F18-F20, Esc and so on).
         params = dict(type=type_, key=key, code=code, windowsVirtualKeyCode=vk,
-                      nativeVirtualKeyCode=vk, modifiers=modifiers)
+                      nativeVirtualKeyCode=native, modifiers=modifiers)
         if text is not None:
             params.update(text=text, unmodifiedText=text)
         self.call("Input.dispatchKeyEvent", **params)
 
-    def _tap(self, key, code, vk, text=None, shift=False):
+    def _tap(self, key, code, vk, native, text=None, shift=False):
         mods = 8 if shift else 0
         if shift:
-            self._key_event("rawKeyDown", "Shift", "ShiftLeft", 16, modifiers=8)
+            self._key_event("rawKeyDown", "Shift", "ShiftLeft", 16, MAC_SHIFT, modifiers=8)
             time.sleep(random.uniform(0.02, 0.05))
-        self._key_event("keyDown" if text else "rawKeyDown", key, code, vk, text, mods)
+        self._key_event("keyDown" if text else "rawKeyDown", key, code, vk, native, text, mods)
         time.sleep(_dwell())
-        self._key_event("keyUp", key, code, vk, modifiers=mods)
+        self._key_event("keyUp", key, code, vk, native, modifiers=mods)
         if shift:
             time.sleep(random.uniform(0.01, 0.03))
-            self._key_event("keyUp", "Shift", "ShiftLeft", 16)
+            self._key_event("keyUp", "Shift", "ShiftLeft", 16, MAC_SHIFT)
 
     def key(self, ch):
         if ch == "\n":
-            self._tap("Enter", "Enter", 13, "\r", shift=self.shift_enter)
+            self._tap("Enter", "Enter", 13, MAC_RETURN, "\r", shift=self.shift_enter)
         elif ch == "\t":
-            self._tap("Tab", "Tab", 9)
+            self._tap("Tab", "Tab", 9, MAC_TAB)
         else:
             b = base_key(ch)
             info = KEYMAP.get(b)
             if info:
                 vk = WIN_VK.get(b, ord(b.upper()))
-                self._tap(ch, info[1], vk, ch, shift=needs_shift(ch))
+                self._tap(ch, info[1], vk, info[0], ch, shift=needs_shift(ch))
             else:
                 self.call("Input.insertText", text=ch)
 
     def backspace(self):
-        self._tap("Backspace", "Backspace", 8)
+        self._tap("Backspace", "Backspace", 8, MAC_DELETE)
 
     # CDP modifier bit, DOM key, DOM code, Windows VK
     CDP_MODS = {"alt": (1, "Alt", "AltLeft", 18), "ctrl": (2, "Control", "ControlLeft", 17),
@@ -266,19 +269,19 @@ class ChromeSink:
         for m in mods:
             bit, k, code, vk = self.CDP_MODS[m]
             bits |= bit
-            self._key_event("rawKeyDown", k, code, vk, modifiers=bits)
+            self._key_event("rawKeyDown", k, code, vk, MAC_MODIFIER_KEYS[m], modifiers=bits)
             time.sleep(random.uniform(0.03, 0.07))
-        code = KEYMAP[key][1]
+        native, code = KEYMAP[key]
         vk = WIN_VK.get(key, ord(key.upper()))
         shown = SHIFTED_OF.get(key, key.upper()) if "shift" in mods else key
-        self._key_event("rawKeyDown", shown, code, vk, modifiers=bits)
+        self._key_event("rawKeyDown", shown, code, vk, native, modifiers=bits)
         time.sleep(_dwell())
-        self._key_event("keyUp", shown, code, vk, modifiers=bits)
+        self._key_event("keyUp", shown, code, vk, native, modifiers=bits)
         for m in reversed(mods):
             time.sleep(random.uniform(0.01, 0.04))
             bit, k, code, vk = self.CDP_MODS[m]
             bits &= ~bit
-            self._key_event("keyUp", k, code, vk, modifiers=bits)
+            self._key_event("keyUp", k, code, vk, MAC_MODIFIER_KEYS[m], modifiers=bits)
 
     def close(self):
         try:
