@@ -2,5 +2,7 @@ pyobjc-framework-Quartz
 pyobjc-framework-Cocoa
 pyobjc-framework-ApplicationServices
 websockets>=12
+# Only needed for the Claude / ChatGPT connector:
+mcp>=2.3
 # Only needed to build the app icon:
 Pillow
