@@ -22,6 +22,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import engine  # noqa: E402
+import markup  # noqa: E402
 import sinks  # noqa: E402
 from app import Runner  # noqa: E402
 
@@ -40,7 +41,10 @@ mcp = MCPServer(
         "Human Typer types text out like a person: uneven rhythm, typos that get fixed, pauses. "
         "To type into a web page, call open_typing_browser (the user signs in and opens the page "
         "in that window), then list_browser_tabs, then type_text with target='chrome_tab' and the "
-        "tab_id. Typing runs in the background and can take minutes: call typing_status to follow "
+        "tab_id. Text may use formatting marks (**bold**, *italic*, __underline__, ~~strike~~, "
+        "{size:18}…{/size}, # headings, - bullets, 1. numbered lists), which become Google Docs "
+        "shortcuts; pass formatting=false to type them literally. Typing runs in the background "
+        "and can take minutes: call typing_status to follow "
         "it, and pause_typing / resume_typing / stop_typing to control it. Only one text types at a time."
     ),
 )
@@ -146,12 +150,13 @@ def list_presets() -> dict:
 
 @mcp.tool()
 def estimate_typing(text: str, preset: str | None = None, wpm: float | None = None,
-                    typos_per_100_words: float | None = None, thinking: float | None = None) -> dict:
+                    typos_per_100_words: float | None = None, thinking: float | None = None,
+                    formatting: bool = True) -> dict:
     """How long typing `text` would take with these settings, without typing anything."""
     s = _settings(preset, wpm, typos_per_100_words, thinking, None)
-    actions = engine.plan_text(text, s, seed=random.randrange(1 << 30))
+    actions, plain = markup.plan(text, s, seed=random.randrange(1 << 30), formatting=formatting)
     secs = engine.plan_duration(actions)
-    words = len(text.split())
+    words = len(plain.split())
     return {
         "seconds": round(secs),
         "overall_wpm": round(words / (secs / 60)) if secs else 0,
@@ -189,7 +194,7 @@ def type_text(text: str, target: str = "chrome_tab", tab_id: str | None = None,
               preset: str | None = None, wpm: float | None = None,
               typos_per_100_words: float | None = None, thinking: float | None = None,
               leave_typos_share: float | None = None, shift_enter: bool = False,
-              countdown_seconds: int = 5) -> dict:
+              formatting: bool = True, countdown_seconds: int = 5) -> dict:
     """Starts typing `text` like a person and returns at once; typing continues in the background.
 
     target: 'chrome_tab' types into a tab of the typing browser (tab_id from
@@ -199,6 +204,8 @@ def type_text(text: str, target: str = "chrome_tab", tab_id: str | None = None,
     preset: one of list_presets (default 'Average (60 wpm)'); wpm, typos_per_100_words,
     thinking (0-3) and leave_typos_share (0-1, typos left unfixed) override it.
     shift_enter: press Shift+Enter for new lines (chat boxes that send on Enter).
+    formatting: turn marks like **bold**, *italic*, # Heading and - bullets into Google Docs
+    shortcuts (default). Set false to type the marks as plain characters.
     """
     global _job
     with _lock:
@@ -207,7 +214,7 @@ def type_text(text: str, target: str = "chrome_tab", tab_id: str | None = None,
         if not text:
             raise ToolError("Nothing to type.")
         s = _settings(preset, wpm, typos_per_100_words, thinking, leave_typos_share)
-        actions = engine.plan_text(text, s, seed=random.randrange(1 << 30))
+        actions, plain = markup.plan(text, s, seed=random.randrange(1 << 30), formatting=formatting)
         events = queue.Queue()
 
         if target == "chrome_tab":
@@ -233,7 +240,7 @@ def type_text(text: str, target: str = "chrome_tab", tab_id: str | None = None,
         else:
             raise ToolError("target must be 'chrome_tab' or 'focused_window'.")
 
-        _job = Job(runner, actions, text, label)
+        _job = Job(runner, actions, plain, label)
         runner.start()
         return _job.report()
 
