@@ -534,7 +534,8 @@ def install_claude_desktop():
         with open(CLAUDE_CONFIG) as f:
             config = json.load(f)
     config.setdefault("mcpServers", {})["human-typer"] = {
-        "command": sys.executable,
+        # Homebrew passes its opt/ path: Python reports the versioned Cellar one, which upgrades delete.
+        "command": os.environ.get("HT_PYTHON") or sys.executable,
         "args": [os.path.abspath(__file__)],
     }
     os.makedirs(os.path.dirname(CLAUDE_CONFIG), exist_ok=True)
