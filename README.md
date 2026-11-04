@@ -39,7 +39,7 @@ of mind.
 
 Background mode needs Google Chrome, Microsoft Edge or Brave (not Safari or Arc).
 
-## Formatting (Google Docs)
+## Formatting (Google Docs and Slides)
 
 Mark up the text and Human Typer applies the formatting with Google Docs'
 keyboard shortcuts while it types, pressing a shortcut and then typing like a person would.
@@ -63,21 +63,56 @@ keyboard shortcuts while it types, pressing a shortcut and then typing like a pe
 - Font sizes snap to Docs' size steps (8, 9, 10, 11, 12, 14, 18, 24, 30, 36, 48, 60, 72, 96).
 - Start with the cursor in plain Normal text (11 pt, nothing toggled on). The app tracks
   formatting from there.
-- The shortcuts are Google Docs ones on macOS. In other apps, ⌘B/⌘I/⌘U usually still
-  work, but headings, lists and sizes may not.
+- The shortcuts are Google Docs ones on macOS. Google Slides uses the same ones for bold,
+  italic, underline, strikethrough and lists, but not for headings, and its size steps
+  are different. In other apps, ⌘B/⌘I/⌘U usually still work.
 
 ## Install
 
-Requires macOS 12+ and Python 3 from [python.org](https://www.python.org/downloads/macos/)
-(it includes Tk).
+Requires macOS 12+.
+
+### With Homebrew (recommended)
 
 ```bash
-python3 -m pip install -r requirements.txt
-./build_app.sh --install
+brew install dimitri-saha/tap/human-typer
+human-typer setup
 ```
 
-This puts **Human Typer.app** in `/Applications`. To run from source instead:
+`human-typer setup` puts **Human Typer.app** in Applications and adds the
+connector to Claude Desktop. You only run it once: `brew upgrade human-typer`
+updates the app and the connector together. Other commands:
+`human-typer connector` runs the connector, `human-typer check-update` checks
+for an update now, and `human-typer version` prints the version.
+
+### From the code
+
+```bash
+git clone https://github.com/dimitri-saha/human-typer.git
+cd human-typer
+./install.sh
+```
+
+The installer:
+
+1. Finds Python 3.10+ with Tk (from [python.org](https://www.python.org/downloads/macos/)
+   or Homebrew). If there isn't one and Homebrew is installed, it installs
+   `python` and `python-tk` with Homebrew.
+2. Installs the packages in their own environment in
+   `~/Library/Application Support/Human Typer/venv`, apart from your other Python projects.
+3. Builds **Human Typer.app** and puts it in `/Applications`.
+4. Adds the connector to Claude Desktop, pointed at the installed app. Pass
+   `--no-claude` to skip this step.
+
+To update, run `git pull`, then `./install.sh` again.
+
+To run without installing: `python3 -m pip install -r requirements.txt`, then
 `python3 human_typer/app.py`.
+
+### Updates
+
+Once a day, the app and the connector check GitHub for a new release. When
+there is one, a Mac notification tells you how to update. After updating, quit
+Claude Desktop (⌘Q) and open it again.
 
 For **Focused window** mode, allow Human Typer (or Python) under
 System Settings › Privacy & Security › Accessibility, then reopen the app.
@@ -96,42 +131,49 @@ The connector is an [MCP](https://modelcontextprotocol.io) server in
 | `open_typing_browser` | Opens Human Typer's Chrome window (or a new tab in it) at a web address. |
 | `list_browser_tabs` | Lists the tabs in that window, so the AI can pick one. |
 | `type_text` | Starts typing. Returns straight away; typing carries on in the background. |
-| `typing_status` | Shows progress: how much is typed, typos made, time left. |
+| `typing_status` | Shows progress: how much is typed, typos made, time left. With `include_text`, it also shows exactly what was typed. |
+| `wait_for_typing` | Waits until typing finishes, then reports. You also get a Mac notification when it's done. |
+| `change_speed` | Changes the speed while typing, without stopping. |
 | `pause_typing` / `resume_typing` / `stop_typing` | Controls the text being typed. |
+| `continue_typing` | Finishes a stopped text with new settings. It deletes any half-fixed typo first. |
+| `look_at_tab` | Takes a screenshot of the page, so the AI can check for typos and see where the text went. |
+| `click_in_tab` | Clicks on the page, for example double-clicking a Google Slides text box to type in it. |
+
+Formatting marks work in Google Docs. Bold, italic, underline, strikethrough and lists also work in Google Slides. Headings and `{size:N}` only work in Docs.
 | `estimate_typing` | Says how long a text would take, without typing it. |
 | `list_presets` | Lists the speed presets (25 to 115 wpm). |
 
 Only one text types at a time.
 
+A good way to ask: *"Look at the slide, double-click the text box under the
+title, type this at 60 wpm, and look again when it's done to check for typos."*
+
 ### Before you start (all apps)
 
-1. Install Human Typer's requirements (see [Install](#install)). The connector
-   also needs the `mcp` package, which is in `requirements.txt`, and Python 3.10 or newer:
+Installing (see [Install](#install)) sets up everything the connector needs.
+The commands below use the installed copy. With Homebrew, use
+`human-typer connector` in place of `"$HT_PY" "$HT_SERVER"`. With `./install.sh`, set:
 
-   ```bash
-   python3 -m pip install -r requirements.txt
-   ```
+```bash
+HT_PY="$HOME/Library/Application Support/Human Typer/venv/bin/python3"
+HT_SERVER="/Applications/Human Typer.app/Contents/Resources/mcp_server.py"
+```
 
-2. Check that it starts. This should print nothing and wait; press Ctrl+C to quit:
+To check that it starts, run `"$HT_PY" "$HT_SERVER"`. It should print nothing and wait. Press Ctrl+C to quit.
 
-   ```bash
-   python3 human_typer/mcp_server.py
-   ```
-
-Run every command below from the `human-typer` folder.
+If you run from source instead, use `python3` and `human_typer/mcp_server.py`.
 
 ### Claude Desktop
 
-1. Add the connector to Claude Desktop's settings:
+1. `human-typer setup` or `./install.sh` already added the connector. To add it by hand:
 
    ```bash
-   python3 human_typer/mcp_server.py --install-claude
+   "$HT_PY" "$HT_SERVER" --install-claude
    ```
 
    This adds a `human-typer` entry to
    `~/Library/Application Support/Claude/claude_desktop_config.json` and keeps
-   anything already there. It saves the full path to the connector, so run it
-   again if you move the `human-typer` folder.
+   anything already there.
 
 2. Quit Claude Desktop completely (⌘Q) and open it again.
 3. In a chat, open the tools menu and check that **human-typer** is listed and switched on.
@@ -142,7 +184,7 @@ Run every command below from the `human-typer` folder.
 ### Claude Code
 
 ```bash
-claude mcp add human-typer -- python3 "$PWD/human_typer/mcp_server.py"
+claude mcp add human-typer -- "$HT_PY" "$HT_SERVER"
 ```
 
 Run `claude mcp list` to check that it connected.
@@ -156,7 +198,7 @@ HTTPS address.
 1. **Start the connector's web server** and leave the Terminal window open:
 
    ```bash
-   python3 human_typer/mcp_server.py --http
+   "$HT_PY" "$HT_SERVER" --http
    ```
 
    It prints a local address ending in a secret code, such as
@@ -195,7 +237,8 @@ HTTPS address.
   connector. A free `trycloudflare.com` address changes each time you start
   the tunnel, so you'll need to update the URL in the app.
 - The secret part of the URL stays the same between runs. Anyone with the full
-  URL can make your Mac type, so don't share it. To get a new one, delete
+  URL can make your Mac type and see the pages open in the typing browser, so
+  don't share it. To get a new one, delete
   `~/Library/Application Support/Human Typer/connector-token` and restart the server.
 - ChatGPT may ask you to confirm each tool call before it runs. That's expected.
 
@@ -204,12 +247,21 @@ HTTPS address.
 - **The tools don't appear in Claude Desktop:** make sure you quit it with ⌘Q
   (closing the window isn't enough). Then check that the command at the top of
   this section runs without errors.
-- **`ModuleNotFoundError: No module named 'mcp'`:** install the requirements
-  with the same `python3` you use to run the connector.
+- **`ModuleNotFoundError: No module named 'mcp'`:** run `./install.sh` again. If
+  you run from source, install the requirements with the same `python3` that runs the connector.
+- **New tools are missing after an update:** run `brew upgrade human-typer` (or
+  `./install.sh` again), then quit Claude Desktop with ⌘Q and reopen it.
+- **`look_at_tab` fails:** the tab has to be the selected tab in its window, and
+  the window can't be minimized.
 - **"The typing browser isn't open":** ask the AI to open it first, or click
   *Open typing window* in the app.
 - **Focused window mode refuses to start:** the app running the connector
   (Claude, or Terminal for `--http`) needs Accessibility permission.
+
+## Working on the code
+
+See [HANDOFF.md](HANDOFF.md) for how the pieces fit together, and how to
+publish a release with `./release.sh`.
 
 ## Tests
 

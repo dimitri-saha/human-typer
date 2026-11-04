@@ -1,4 +1,5 @@
 """Where keystrokes go: the focused window, a background Chrome tab, or a preview."""
+import base64
 import json
 import os
 import random
@@ -282,6 +283,25 @@ class ChromeSink:
             bit, k, code, vk = self.CDP_MODS[m]
             bits &= ~bit
             self._key_event("keyUp", k, code, vk, MAC_MODIFIER_KEYS[m], modifiers=bits)
+
+    def screenshot(self):
+        """(JPEG bytes, width, height) of the visible page, one image pixel per CSS pixel."""
+        vp = self.call("Page.getLayoutMetrics")["cssVisualViewport"]
+        dpr = self.call("Runtime.evaluate", expression="devicePixelRatio",
+                        returnByValue=True)["result"]["value"]
+        w, h = vp["clientWidth"], vp["clientHeight"]
+        shot = self.call("Page.captureScreenshot", format="jpeg", quality=75,
+                         clip=dict(x=vp["pageX"], y=vp["pageY"], width=w, height=h, scale=1 / dpr))
+        return base64.b64decode(shot["data"]), round(w), round(h)
+
+    def click(self, x, y, clicks=1):
+        """Left-clicks at CSS pixel (x, y); clicks=2 is a double-click."""
+        self.call("Input.dispatchMouseEvent", type="mouseMoved", x=x, y=y)
+        for n in range(1, clicks + 1):
+            time.sleep(random.uniform(0.05, 0.12))
+            self.call("Input.dispatchMouseEvent", type="mousePressed", x=x, y=y, button="left", clickCount=n)
+            time.sleep(_dwell())
+            self.call("Input.dispatchMouseEvent", type="mouseReleased", x=x, y=y, button="left", clickCount=n)
 
     def close(self):
         try:

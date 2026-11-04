@@ -379,9 +379,9 @@ def plan_duration(actions):
     return sum(a.delay for a in actions)
 
 
-def replay(actions):
-    """What the screen would show after performing the actions (for testing)."""
-    out = []
+def replay(actions, start=""):
+    """What the screen would show after performing the actions on `start`."""
+    out = list(start)
     for a in actions:
         if a.kind == "key":
             out.append(a.ch)

@@ -227,19 +227,24 @@ class DocsState:
         return combos
 
 
-def format_points(doc):
-    """{text index: shortcuts to press just before typing that character}."""
-    state = DocsState()
+def format_points(doc, start=0, state=None):
+    """{text index: shortcuts to press just before typing that character}.
+
+    start/state: plan only doc.text[start:] (indexes counted from start), with the
+    editor already in `state` (what was applied before stopping).
+    """
+    state = replace(state) if state else DocsState()
     points = {}
-    p = 0
-    para_start = True
-    for i, ch in enumerate(doc.text):
+    p = doc.text.count("\n", 0, start)
+    para_start = start == 0 or doc.text[start - 1] == "\n"
+    for i in range(start, len(doc.text)):
+        ch = doc.text[i]
         para = doc.paras[p] if para_start else None
         combos = state.combos_for(para, None if ch == "\n" else doc.inline[i])
         for c in combos:
             state.apply(c)
         if combos:
-            points[i] = combos
+            points[i - start] = combos
         if ch == "\n":
             state.newline()
             p += 1

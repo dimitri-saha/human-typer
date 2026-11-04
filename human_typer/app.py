@@ -10,6 +10,7 @@ from tkinter import messagebox, scrolledtext, ttk
 
 import engine
 import markup
+import update
 import sinks
 
 MODE_FOCUSED, MODE_CHROME, MODE_PREVIEW = "focused", "chrome", "preview"
@@ -26,6 +27,7 @@ class Runner(threading.Thread):
         self.guard = guard
         self.stop_flag = threading.Event()
         self.paused = threading.Event()
+        self.scale = 1.0   # multiplies every planned delay; changed live to change speed
 
     def _wait(self, seconds):
         """Sleeps for `seconds` of un-paused time. False means stop."""
@@ -62,7 +64,7 @@ class Runner(threading.Thread):
             self.events.put(("status", "Typing…"))
             debt = 0.0
             for idx, a in enumerate(self.actions):
-                wait = a.delay - debt
+                wait = a.delay * self.scale - debt
                 if a.tag == "think" and a.delay > 1.2:
                     self.events.put(("status", "Thinking…"))
                 if not self._wait(max(0.004, wait)):
@@ -607,6 +609,7 @@ def main():
     root = tk.Tk()
     set_dock_icon()
     App(root)
+    update.check_in_background()
     root.mainloop()
 
 

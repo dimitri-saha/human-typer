@@ -1,15 +1,17 @@
 #!/bin/zsh
 # Builds dist/Human Typer.app. Pass --install to also copy it to /Applications.
+# Most people want ./install.sh, which also sets up Python and the connector.
+# HT_CODE=<folder with app.py> HT_PYTHON=<python> makes the app run that code (Homebrew uses it).
 set -euo pipefail
 cd "$(dirname "$0")"
 
 APP="dist/Human Typer.app"
-VERSION="1.0.0"
+VERSION="$(sed -n 's/^VERSION = "\(.*\)"/\1/p' human_typer/update.py)"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 cp human_typer/*.py "$APP/Contents/Resources/"
-python3 tools/make_icon.py "$APP/Contents/Resources/AppIcon.icns"
+"${PYTHON:-python3}" tools/make_icon.py "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -35,7 +37,8 @@ EOF
 cat > "$APP/Contents/MacOS/HumanTyper" <<'EOF'
 #!/bin/zsh
 HERE="$(cd "$(dirname "$0")/../Resources" && pwd)"
-for PY in /Library/Frameworks/Python.framework/Versions/Current/bin/python3 \
+for PY in "$HOME/Library/Application Support/Human Typer/venv/bin/python3" \
+          /Library/Frameworks/Python.framework/Versions/Current/bin/python3 \
           /Library/Frameworks/Python.framework/Versions/3.*/bin/python3(N) \
           /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do
   [[ -x "$PY" ]] || continue
@@ -43,10 +46,15 @@ for PY in /Library/Frameworks/Python.framework/Versions/Current/bin/python3 \
     exec "$PY" "$HERE/app.py"
   fi
 done
-osascript -e 'display alert "Human Typer needs Python 3 with a few packages" message "Install Python from python.org, then run in Terminal:\n\npython3 -m pip install pyobjc-framework-Quartz pyobjc-framework-Cocoa pyobjc-framework-ApplicationServices websockets" as critical'
+osascript -e 'display alert "Human Typer needs Python 3 with a few packages" message "Run ./install.sh from the human-typer folder in Terminal." as critical'
 exit 1
 EOF
 chmod +x "$APP/Contents/MacOS/HumanTyper"
+
+# Homebrew: run the code and Python at fixed paths that survive `brew upgrade`.
+if [[ -n "${HT_CODE:-}" ]]; then
+  printf '#!/bin/zsh\nexec "%s" "%s/app.py"\n' "$HT_PYTHON" "$HT_CODE" > "$APP/Contents/MacOS/HumanTyper"
+fi
 
 echo "Built $APP"
 if [[ "${1:-}" == "--install" ]]; then
