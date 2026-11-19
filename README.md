@@ -140,6 +140,7 @@ The connector is an [MCP](https://modelcontextprotocol.io) server in
 | `click_in_tab` | Clicks on the page, for example double-clicking a Google Slides text box to type in it. |
 
 Formatting marks work in Google Docs. Bold, italic, underline, strikethrough and lists also work in Google Slides. Headings and `{size:N}` only work in Docs.
+| `formatting_guide` | Tells the AI every formatting mark, what works in Docs vs Slides, and what isn't supported. |
 | `estimate_typing` | Says how long a text would take, without typing it. |
 | `list_presets` | Lists the speed presets (25 to 115 wpm). |
 

@@ -185,5 +185,17 @@ class UpdateTest(unittest.TestCase):
         self.assertFalse(update.newer("nightly", "1.1.0"))
 
 
+@unittest.skipIf(mcp_server is None, "mcp not installed")
+class FormattingGuideTest(unittest.TestCase):
+    def test_example_parses_as_documented(self):
+        example = mcp_server.formatting_guide().split("## Example\n\n")[1].split("\n\n## ")[0]
+        doc = markup.parse(example)
+        self.assertNotIn("*", doc.text)
+        self.assertNotIn("{", doc.text)
+        self.assertEqual([p.heading for p in doc.paras], [1, 0, 2, 0, 0, 0, 0, 0])
+        self.assertEqual([p.list for p in doc.paras], ["", "", "", "bullet", "bullet", "number", "number", ""])
+        self.assertEqual(doc.inline[-1].size, 9)
+
+
 if __name__ == "__main__":
     unittest.main()

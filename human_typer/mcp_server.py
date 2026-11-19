@@ -54,9 +54,81 @@ mcp = MCPServer(
         "(include_text=true shows exactly what was typed). change_speed changes speed mid-job; "
         "pause_typing / resume_typing / stop_typing control it, and continue_typing finishes a "
         "stopped text with new settings. After typing, look_at_tab to check the result. "
-        "Only one text types at a time."
+        "Only one text types at a time. Before typing formatted text, call formatting_guide once "
+        "for the full rules and what isn't supported."
     ),
 )
+
+FORMATTING_GUIDE = """\
+# Human Typer formatting guide
+
+type_text turns these marks into Google Docs keyboard shortcuts (macOS) while it types,
+the way a person would: press the shortcut, then type. The marks themselves are never typed.
+
+## Supported marks
+
+| Write | Becomes | Docs | Slides |
+|---|---|---|---|
+| **bold** | bold | yes | yes |
+| *italic* | italic | yes | yes |
+| __underline__ | underline | yes | yes |
+| ~~strike~~ | strikethrough | yes | yes |
+| {size:18}text{/size} | font size | yes | no |
+| # Title ... ###### Title (at line start) | Heading 1-6 | yes | no |
+| - item  or  * item (at line start) | bulleted list | yes | yes |
+| 1. item  or  1) item (at line start) | numbered list | yes | yes |
+
+Marks can be combined and nested: ***bold italic***, **bold {size:14}bigger{/size}**,
+- **Key point:** explanation, ## Heading with *italic*.
+
+## Rules that matter
+
+- One line = one paragraph. Use "\\n" between paragraphs; a list is consecutive "- " lines.
+  A line without a list marker ends the list.
+- Don't write the numbers yourself expecting them to appear: "1. " just starts a numbered
+  list item, and Google Docs numbers the items. Any number works ("1." on every line is fine).
+- Inline marks must open and close on the same line. A mark with no partner on its line is
+  typed literally, so close every mark before the line ends.
+- A lone * between spaces (5 * 3) and underscores inside words (snake_case) are typed as-is.
+  To type any mark character literally, put a backslash before it: \\* \\_ \\~ \\{ \\#
+  (e.g. "\\# not a heading", "\\- not a bullet"). Or pass formatting=false to type everything literally.
+- Sizes snap to Docs' size steps: 8 9 10 11 12 14 18 24 30 36 48 60 72 96.
+- Headings: Return after a heading line goes back to Normal text automatically.
+- The cursor must start in plain Normal text (11 pt, no bold/italic/list turned on).
+  Human Typer tracks the formatting from there; if the cursor sits inside bold text or a
+  list, everything will be off. Click into an empty Normal-text line first (click_in_tab).
+
+## Not supported (don't use these marks; they are typed literally or ignored)
+
+- Nested / indented lists: indentation is dropped, every item lands at the top level.
+- Checklists, links, text or highlight colour, fonts, line spacing, alignment,
+  indentation, superscript/subscript, code formatting, block quotes.
+- Tables, images, drawings, page breaks, footnotes, comments, equations.
+- Markdown links [text](url), `code`, > quotes, --- rules.
+If the user needs any of these, type the text, then tell them to apply that formatting by hand.
+
+## Example
+
+# Weekly update
+Shipped the **new login page** and fixed *two* bugs.
+## Next steps
+- Finish the __billing__ screen
+- Remove the ~~old~~ settings page
+1. Draft
+1. Review
+{size:9}Sent from my laptop{/size}
+
+## After typing
+
+Call look_at_tab to check the formatting landed as expected. typing_status with
+include_text=true shows the exact characters typed.
+"""
+
+
+@mcp.tool()
+def formatting_guide() -> str:
+    """Full rules for formatting marks in type_text: what works in Docs vs Slides, escaping, and what isn't supported. Read before typing formatted text."""
+    return FORMATTING_GUIDE
 
 
 # ----------------------------------------------------------------- the job --
@@ -323,6 +395,7 @@ def type_text(text: str, target: str = "chrome_tab", tab_id: str | None = None,
     formatting: turn marks into shortcuts (default). **bold**, *italic*, __underline__,
     ~~strike~~ and - / 1. lists work in Google Docs and Slides; # headings and {size:N}
     are Google Docs only. Set false to type the marks as plain characters.
+    See formatting_guide for the full rules.
     """
     with _lock:
         if _busy():
