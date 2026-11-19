@@ -490,6 +490,27 @@ class App:
             self._set_running(False)
             self.status.config(text="Cancelled")
 
+    def _offer_update(self, tag):
+        v = tag.lstrip("v")
+        msg = f"Version {v} of Human Typer is out (you have {update.VERSION})."
+        if not update.is_brew():
+            messagebox.showinfo("Human Typer update", f"{msg}\n\nTo update: {update.how_to_update()}")
+            return
+        if not messagebox.askyesno("Human Typer update", f"{msg}\n\nUpdate now?"):
+            return
+        self.status.config(text="Updating Human Typer…")
+        threading.Thread(target=lambda: self.events.put(("updated", *update.brew_upgrade())),
+                         daemon=True).start()
+
+    def _update_finished(self, ok, output):
+        if ok:
+            self.status.config(text="Updated. Reopen Human Typer to use the new version.")
+            messagebox.showinfo("Human Typer update", "Updated. Quit and reopen Human Typer to use the new version.")
+        else:
+            self.status.config(text="Update failed")
+            messagebox.showerror("Human Typer update",
+                                 f"The update didn't work. Run this in Terminal:\n\nbrew upgrade human-typer\n\n{output[-600:]}")
+
     def _pump(self):
         try:
             while True:
@@ -505,6 +526,10 @@ class App:
                     wpm = (pos / 5) / (elapsed / 60) if elapsed > 3 else 0
                     self.stats.config(text=f"{pos}/{self.text_len} chars  ·  {self.typos_made} typos  ·  "
                                            f"{wpm:.0f} wpm  ·  {fmt_duration(elapsed)}")
+                elif ev[0] == "update":
+                    self._offer_update(ev[1])
+                elif ev[0] == "updated":
+                    self._update_finished(*ev[1:])
                 elif ev[0] == "done":
                     self.status.config(text=ev[1] if ev[1] != "Done" else "Done ✓")
                     self.runner = None
@@ -608,8 +633,8 @@ def set_dock_icon():
 def main():
     root = tk.Tk()
     set_dock_icon()
-    App(root)
-    update.check_in_background()
+    app = App(root)
+    update.check_in_background(lambda tag: app.events.put(("update", tag)))
     root.mainloop()
 
 

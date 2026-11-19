@@ -184,6 +184,20 @@ class UpdateTest(unittest.TestCase):
         self.assertFalse(update.newer("v1.0.9", "1.1.0"))
         self.assertFalse(update.newer("nightly", "1.1.0"))
 
+    def test_check_calls_on_newer_only_for_a_newer_release(self):
+        import tempfile
+        from unittest import mock
+        import update
+        seen = []
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(update, "STAMP", os.path.join(d, "stamp")), \
+                mock.patch.object(update, "notify"):
+            with mock.patch.object(update, "latest_release", return_value="v99.0.0"):
+                update.check(force=True, on_newer=seen.append)
+            with mock.patch.object(update, "latest_release", return_value="v" + update.VERSION):
+                update.check(force=True, on_newer=seen.append)
+        self.assertEqual(seen, ["v99.0.0"])
+
 
 @unittest.skipIf(mcp_server is None, "mcp not installed")
 class FormattingGuideTest(unittest.TestCase):
