@@ -6,7 +6,7 @@ import threading
 import time
 import urllib.request
 
-VERSION = "1.1.1"
+VERSION = "1.2.0"
 REPO = "dimitri-saha/human-typer"
 STAMP = os.path.expanduser("~/Library/Application Support/Human Typer/last-update-check")
 
